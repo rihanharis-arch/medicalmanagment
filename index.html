@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedVault</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card: #1e293b; --accent: #38bdf8;
+            --danger: #f43f5e; --success: #10b981; --text: #f1f5f9;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 15px; padding-bottom: 80px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        
+        /* Header & Search */
+        header { text-align: center; margin-bottom: 20px; }
+        .search-bar { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #334155; background: var(--card); color: white; margin-bottom: 20px; }
+
+        /* Form Styling */
+        .form-card { background: var(--card); padding: 20px; border-radius: 15px; margin-bottom: 25px; border: 1px solid #334155; }
+        .input-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 5px; }
+        input, textarea { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: white; }
+        
+        /* Timing Toggles */
+        .toggle-group { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+        .chip { padding: 6px 12px; border-radius: 20px; background: #0f172a; border: 1px solid #334155; font-size: 0.75rem; cursor: pointer; }
+        .chip.active { background: var(--accent); color: #0f172a; border-color: var(--accent); }
+
+        /* Habit Tracker Section */
+        .section-title { font-size: 1rem; margin-bottom: 10px; color: var(--accent); display: flex; justify-content: space-between; }
+        .habit-row { display: flex; align-items: center; background: var(--card); padding: 12px; border-radius: 10px; margin-bottom: 8px; border-left: 4px solid var(--accent); }
+        .habit-info { flex-grow: 1; }
+        .habit-check { width: 25px; height: 25px; border-radius: 50%; border: 2px solid var(--accent); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .habit-check.done { background: var(--success); border-color: var(--success); }
+
+        /* Med Cards */
+        .med-card { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 10px; position: relative; border: 1px solid #334155; }
+        .expired { border-left: 4px solid var(--danger); }
+        .delete-btn { position: absolute; right: 10px; top: 10px; background: none; border: none; color: #64748b; font-size: 1.2rem; cursor: pointer; }
+        .tag { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: #334155; margin-right: 4px; }
+
+        button.main-btn { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--accent); color: #0f172a; font-weight: bold; margin-top: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>MedVault</h1>
+        <p style="color: #94a3b8; font-size: 0.8rem;">Habits & Expiry Tracker</p>
+    </header>
+
+    <input type="text" class="search-bar" id="search" placeholder="Search medicines..." oninput="renderAll()">
+
+    <div class="section-title">Daily Intake Tracker <small id="today-date"></small></div>
+    <div id="habitList"></div>
+
+    <div class="form-card">
+        <div class="input-group">
+            <label>Medicine Name</label>
+            <input type="text" id="medName" placeholder="Paracetamol">
+        </div>
+        <div class="input-group">
+            <label>Expiry (DD-MM-YYYY)</label>
+            <input type="text" id="expDate" placeholder="25-12-2026">
+        </div>
+        <div class="input-group">
+            <label>Schedule</label>
+            <div class="toggle-group" id="timeSlots">
+                <span class="chip" onclick="this.classList.toggle('active')">Morning</span>
+                <span class="chip" onclick="this.classList.toggle('active')">Lunch</span>
+                <span class="chip" onclick="this.classList.toggle('active')">Dinner</span>
+            </div>
+        </div>
+        <div class="input-group">
+            <label>Meal Relation</label>
+            <div class="toggle-group" id="mealSlots">
+                <span class="chip" onclick="toggleMeal(this, 'Before')">Before Meal</span>
+                <span class="chip" onclick="toggleMeal(this, 'After')">After Meal</span>
+            </div>
+        </div>
+        <button class="main-btn" onclick="addMedicine()">Add Medicine</button>
+    </div>
+
+    <div class="section-title">Medicine Cabinet</div>
+    <div id="medList"></div>
+</div>
+
+<script>
+    let medicines = JSON.parse(localStorage.getItem('medVaultPro')) || [];
+    let habits = JSON.parse(localStorage.getItem('medHabits')) || {};
+
+    // Initialize Habit tracking for today
+    const todayKey = new Date().toISOString().split('T')[0];
+    document.getElementById('today-date').innerText = new Date().toLocaleDateString();
+    if (!habits[todayKey]) habits[todayKey] = [];
+
+    function toggleMeal(el, type) {
+        el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        el.classList.add('active');
+    }
+
+    function addMedicine() {
+        const name = document.getElementById('medName').value;
+        const dateStr = document.getElementById('expDate').value;
+        if (!name || !dateStr) return;
+
+        const times = Array.from(document.querySelectorAll('#timeSlots .active')).map(c => c.innerText);
+        const meal = document.querySelector('#mealSlots .active')?.innerText || "";
+        
+        const dateParts = dateStr.split("-");
+        const expiryDate = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+
+        const med = {
+            id: Date.now(),
+            name,
+            expiryStr: dateStr,
+            expiryTime: expiryDate.getTime(),
+            times,
+            meal
+        };
+
+        medicines.push(med);
+        saveAndRender();
+        document.querySelectorAll('input').forEach(i => i.value = '');
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    }
+
+    function toggleHabit(id) {
+        if (habits[todayKey].includes(id)) {
+            habits[todayKey] = habits[todayKey].filter(hid => hid !== id);
+        } else {
+            habits[todayKey].push(id);
+        }
+        saveAndRender();
+    }
+
+    function deleteMed(id) {
+        medicines = medicines.filter(m => m.id !== id);
+        saveAndRender();
+    }
+
+    function saveAndRender() {
+        localStorage.setItem('medVaultPro', JSON.stringify(medicines));
+        localStorage.setItem('medHabits', JSON.stringify(habits));
+        renderAll();
+    }
+
+    function renderAll() {
+        const query = document.getElementById('search').value.toLowerCase();
+        const medList = document.getElementById('medList');
+        const habitList = document.getElementById('habitList');
+        const now = new Date().setHours(0,0,0,0);
+
+        medList.innerHTML = '';
+        habitList.innerHTML = '';
+
+        medicines.forEach(med => {
+            if (!med.name.toLowerCase().includes(query)) return;
+
+            const isExpired = med.expiryTime < now;
+            
+            // Render Cabinet
+            const card = document.createElement('div');
+            card.className = `med-card ${isExpired ? 'expired' : ''}`;
+            card.innerHTML = `
+                <button class="delete-btn" onclick="deleteMed(${med.id})">&times;</button>
+                <div style="font-weight:bold">${med.name} ${isExpired ? '<span style="color:var(--danger)">[EXPIRED]</span>' : ''}</div>
+                <div style="font-size:0.8rem; color:#94a3b8">Expires: ${med.expiryStr}</div>
+                <div style="margin-top:5px">
+                    ${med.times.map(t => `<span class="tag">${t}</span>`).join('')}
+                    <span class="tag" style="background:#1e3a8a">${med.meal}</span>
+                </div>
+            `;
+            medList.appendChild(card);
+
+            // Render Daily Habit Tracker
+            const isDone = habits[todayKey].includes(med.id);
+            const habitRow = document.createElement('div');
+            habitRow.className = 'habit-row';
+            habitRow.innerHTML = `
+                <div class="habit-info">
+                    <div style="font-weight:500">${med.name}</div>
+                    <div style="font-size:0.7rem; color:#94a3b8">${med.times.join(', ')} | ${med.meal}</div>
+                </div>
+                <div class="habit-check ${isDone ? 'done' : ''}" onclick="toggleHabit(${med.id})">
+                    ${isDone ? '✓' : ''}
+                </div>
+            `;
+            habitList.appendChild(habitRow);
+            
+            // Improved Notifications
+            if (isExpired && Notification.permission === "granted") {
+                new Notification("Medicine Expired", { body: `${med.name} is past its expiry date!`, icon: 'https://cdn-icons-png.flaticon.com/512/822/822143.png' });
+            }
+        });
+    }
+
+    // Ask for permission on first click
+    document.body.onclick = () => {
+        if (Notification.permission === "default") Notification.requestPermission();
+    };
+
+    renderAll();
+</script>
+</body>
+</html>
